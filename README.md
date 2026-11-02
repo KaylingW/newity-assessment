@@ -81,7 +81,8 @@ src/components/     UI pieces, including the inline document editor
 src/lib/config.ts   as-of date, thresholds, expiry periods, statuses
 src/lib/rules.ts    all business rules (pure functions)
 src/lib/db.ts       schema, CSV seed, queries
-tests/              Vitest unit, database and API tests
+tests/              Vitest unit, database, API and editor component tests
+e2e/                Playwright end-to-end test (runs against its own throwaway database)
 data/               sample CSV
 ```
 
@@ -89,6 +90,8 @@ data/               sample CSV
 
 ```bash
 npm test                        # run the test suite
+npx playwright install chromium # one-time: download the browser for the E2E test
+npm run test:e2e                # build, start on port 3100 with a fresh .data/e2e.db, run the E2E test
 npm run build && npm start      # production build
 rm -rf .data && npm run dev     # reset: delete the database and reseed from the CSV
 DB_PATH=/tmp/other.db npm run dev   # use a different database file
