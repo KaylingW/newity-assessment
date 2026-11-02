@@ -24,6 +24,22 @@ export const STALL_DAYS = 14;
 /** A document is "expiring soon" when it expires within this many days of the as-of date. */
 export const EXPIRING_SOON_DAYS = 30;
 
+/** Every document type on an SBA checklist. The CSV seed rejects any other type. */
+export const DOCUMENT_TYPES = [
+  "Articles of Incorporation",
+  "Bank Statements (90 day)",
+  "Business Financial Statements",
+  "Business Licenses & Permits",
+  "Business Tax Returns (3yr)",
+  "Debt Schedule",
+  "Insurance Verification",
+  "Lease Agreement",
+  "Ownership Verification",
+  "Personal Tax Returns (3yr)",
+  "SBA Form 1919",
+  "SBA Form 912",
+] as const;
+
 /** Days from received date to expiration date, by document type. Types not listed never expire. */
 export const EXPIRY_RULES: Readonly<Record<string, number>> = {
   "Personal Tax Returns (3yr)": 1095,
