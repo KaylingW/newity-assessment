@@ -76,7 +76,8 @@ export function seedIfEmpty(db: DB, csvPath: string = DEFAULT_CSV_PATH): boolean
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM applications").get() as { n: number };
   if (n > 0) return false;
 
-  const rows = parse(fs.readFileSync(csvPath, "utf8"), {
+  // Read from the project folder at runtime; tell Turbopack not to trace (and bundle) the whole project for it.
+  const rows = parse(fs.readFileSync(/*turbopackIgnore: true*/ csvPath, "utf8"), {
     columns: true,
     skip_empty_lines: true,
     trim: true,
