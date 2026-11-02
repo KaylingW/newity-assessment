@@ -6,11 +6,27 @@ A small local web app for tracking SBA loan document checklists. It shows every 
 
 - **Node.js 22 or newer** (`.nvmrc` pins 22). The SQLite driver (`better-sqlite3`) has ready-made builds for Node 22, 24 and 25, so no compiler is needed. Older versions (20, 21) have no ready-made build; the install falls back to compiling and may fail.
 - npm (comes with Node).
+- On Apple Silicon Macs, use a native **arm64** Node. Check with `node -p process.arch`; it should print `arm64`, not `x64`.
+
+## Install
+
+With [nvm](https://github.com/nvm-sh/nvm), switch to the pinned version first:
+
+```bash
+nvm install   # reads .nvmrc; only needed once
+nvm use
+```
+
+Then install the dependencies:
+
+```bash
+npm install
+```
 
 ## Run it
 
 ```bash
-npm install && npm run dev
+npm run dev
 ```
 
 Open http://localhost:3000. On first start the app creates `.data/tracker.db` and loads `data/NEWITY_Sample_Data_A_Document_Checklist.csv` into it (60 applications, 620 documents). Later starts reuse the same database, so edits are kept.
@@ -49,3 +65,14 @@ The thresholds and expiry rules live in `src/lib/config.ts`; the rule logic is i
 ```bash
 npm test
 ```
+
+## Troubleshooting
+
+**`better_sqlite3.node` ... incompatible architecture (have 'arm64', need 'x86_64')** (or the other way round): the native SQLite module was built with a different Node than the one running now. This usually means an x64 Node running under Rosetta on an Apple Silicon Mac. Switch to the arm64 Node 22 (`nvm use`) and rebuild the module:
+
+```bash
+nvm use
+npm rebuild better-sqlite3
+```
+
+If that doesn't fix it, reinstall from scratch: `rm -rf node_modules && npm install`.
