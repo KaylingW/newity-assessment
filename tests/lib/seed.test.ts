@@ -1,32 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { DEFAULT_CSV_PATH, listApplicationSummaries, openDb, seedIfEmpty, type DB } from "./db";
-import { docState } from "./rules";
-
-const tmpDirs: string[] = [];
-const opened: DB[] = [];
-
-function tempDbPath(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tracker-test-"));
-  tmpDirs.push(dir);
-  return path.join(dir, "tracker.db");
-}
-
-function open(p: string): DB {
-  const db = openDb(p);
-  opened.push(db);
-  return db;
-}
-
-const count = (db: DB, table: string) =>
-  (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
-
-afterEach(() => {
-  opened.splice(0).forEach((db) => db.close());
-  tmpDirs.splice(0).forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
-});
+import { DEFAULT_CSV_PATH, listApplicationSummaries, seedIfEmpty } from "@/lib/db";
+import { docState } from "@/lib/rules";
+import { count, open, tempDbPath, tempDir } from "../helpers";
 
 describe("seed", () => {
   it("loads 60 applications and 620 documents, and a second run adds nothing", () => {
@@ -40,7 +17,6 @@ describe("seed", () => {
     // Simulate a restart: reopen the same file, keep an edit.
     db.prepare("UPDATE documents SET notes = 'edited' WHERE id = 1").run();
     db.close();
-    opened.length = 0;
     const db2 = open(p);
     expect(seedIfEmpty(db2, DEFAULT_CSV_PATH)).toBe(false);
     expect(count(db2, "applications")).toBe(60);
@@ -73,9 +49,7 @@ describe("seed", () => {
   });
 
   it("leaves the database empty when the CSV is bad", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tracker-csv-"));
-    tmpDirs.push(dir);
-    const csv = path.join(dir, "bad.csv");
+    const csv = path.join(tempDir("tracker-csv-"), "bad.csv");
     const good = fs.readFileSync(DEFAULT_CSV_PATH, "utf8").split("\n").slice(0, 5);
     fs.writeFileSync(csv, [...good, "APP-X,Biz,Bob,1000,13/45/2025,Aisha Patel,Lease Agreement,Pending,,,"].join("\n"));
     const db = open(tempDbPath());

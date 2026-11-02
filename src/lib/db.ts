@@ -49,6 +49,8 @@ export function openDb(dbPath: string = DEFAULT_DB_PATH): DB {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  // Sync every commit to disk, so a saved edit survives a crash or power loss.
+  db.pragma("synchronous = FULL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   return db;
@@ -179,6 +181,17 @@ export function listDocuments(db: DB, applicationId: string): DocumentRow[] {
   return db
     .prepare("SELECT * FROM documents WHERE application_id = ? ORDER BY document_type")
     .all(applicationId) as DocumentRow[];
+}
+
+/** Every document, grouped by application id. */
+export function listDocumentsByApplication(db: DB): Map<string, DocumentRow[]> {
+  const byApp = new Map<string, DocumentRow[]>();
+  for (const d of db.prepare("SELECT * FROM documents ORDER BY document_type").all() as DocumentRow[]) {
+    const list = byApp.get(d.application_id) ?? [];
+    list.push(d);
+    byApp.set(d.application_id, list);
+  }
+  return byApp;
 }
 
 export function getDocument(db: DB, id: number): DocumentRow | undefined {
