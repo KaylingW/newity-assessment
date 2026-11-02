@@ -49,6 +49,8 @@ export function openDb(dbPath: string = DEFAULT_DB_PATH): DB {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  // Sync every commit to disk, so a saved edit survives a crash or power loss.
+  db.pragma("synchronous = FULL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
   return db;
@@ -76,7 +78,8 @@ export function seedIfEmpty(db: DB, csvPath: string = DEFAULT_CSV_PATH): boolean
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM applications").get() as { n: number };
   if (n > 0) return false;
 
-  const rows = parse(fs.readFileSync(csvPath, "utf8"), {
+  // Read from the project folder at runtime; tell Turbopack not to trace (and bundle) the whole project for it.
+  const rows = parse(fs.readFileSync(/*turbopackIgnore: true*/ csvPath, "utf8"), {
     columns: true,
     skip_empty_lines: true,
     trim: true,
@@ -178,6 +181,17 @@ export function listDocuments(db: DB, applicationId: string): DocumentRow[] {
   return db
     .prepare("SELECT * FROM documents WHERE application_id = ? ORDER BY document_type")
     .all(applicationId) as DocumentRow[];
+}
+
+/** Every document, grouped by application id. */
+export function listDocumentsByApplication(db: DB): Map<string, DocumentRow[]> {
+  const byApp = new Map<string, DocumentRow[]>();
+  for (const d of db.prepare("SELECT * FROM documents ORDER BY document_type").all() as DocumentRow[]) {
+    const list = byApp.get(d.application_id) ?? [];
+    list.push(d);
+    byApp.set(d.application_id, list);
+  }
+  return byApp;
 }
 
 export function getDocument(db: DB, id: number): DocumentRow | undefined {

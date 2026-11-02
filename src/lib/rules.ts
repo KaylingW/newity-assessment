@@ -116,9 +116,12 @@ export function docState(
 
 export interface ApplicationSummary extends Application {
   totalDocs: number;
+  completeCount: number;
   outstandingCount: number;
   expiredCount: number;
   expiringSoonCount: number;
+  /** Earliest expiration date on or after the as-of date, or null when none. */
+  nextExpiry: string | null;
   /** Latest received date, or the application date if nothing has been received. */
   lastActivity: string;
   daysIdle: number;
@@ -133,10 +136,18 @@ export function summarizeApplication(
   let outstandingCount = 0;
   let expiredCount = 0;
   let expiringSoonCount = 0;
+  let nextExpiry: string | null = null;
   let latestReceived: string | null = null;
   for (const doc of docs) {
     const state = docState(doc, asOf);
     if (state.outstanding) outstandingCount++;
+    if (
+      !state.expired &&
+      doc.expiration_date !== null &&
+      (nextExpiry === null || doc.expiration_date < nextExpiry)
+    ) {
+      nextExpiry = doc.expiration_date;
+    }
     if (state.expired) expiredCount++;
     if (state.expiringSoon) expiringSoonCount++;
     if (doc.date_received && (latestReceived === null || doc.date_received > latestReceived)) {
@@ -148,9 +159,11 @@ export function summarizeApplication(
   return {
     ...app,
     totalDocs: docs.length,
+    completeCount: docs.length - outstandingCount,
     outstandingCount,
     expiredCount,
     expiringSoonCount,
+    nextExpiry,
     lastActivity,
     daysIdle,
     stalled: outstandingCount > 0 && daysIdle >= STALL_DAYS,
@@ -161,6 +174,111 @@ export function summarizeApplication(
 export function stalledReason(s: Pick<ApplicationSummary, "stalled" | "daysIdle" | "outstandingCount">): string | null {
   if (!s.stalled) return null;
   return `Stalled — ${s.daysIdle} days idle, ${s.outstandingCount} outstanding`;
+}
+
+export type Tone = "red" | "amber" | "green" | "blue" | "grey";
+
+export const APPLICATION_STATUSES = ["Stalled", "Expired docs", "Expiring soon", "Needs docs", "Complete"] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
+
+/** The single most urgent label for an application, in the same priority as the worklist order. */
+export function applicationStatus(
+  s: Pick<ApplicationSummary, "stalled" | "expiredCount" | "expiringSoonCount" | "outstandingCount">,
+): { label: ApplicationStatus; tone: Tone } {
+  if (s.stalled) return { label: "Stalled", tone: "red" };
+  if (s.expiredCount > 0) return { label: "Expired docs", tone: "red" };
+  if (s.expiringSoonCount > 0) return { label: "Expiring soon", tone: "amber" };
+  if (s.outstandingCount > 0) return { label: "Needs docs", tone: "amber" };
+  return { label: "Complete", tone: "green" };
+}
+
+export interface ApplicationFilters {
+  /** Matches application id, business name or borrower name, case-insensitive. */
+  q?: string;
+  status?: ApplicationStatus;
+  expiry?: "expired" | "soon";
+  /** Application date on or after this ISO date. */
+  appliedFrom?: string;
+  /** Application date on or before this ISO date. */
+  appliedTo?: string;
+}
+
+export function filterApplications<T extends ApplicationSummary>(apps: T[], f: ApplicationFilters): T[] {
+  const q = f.q?.trim().toLowerCase();
+  return apps.filter(
+    (a) =>
+      (!q || [a.id, a.business_name, a.borrower_name].some((v) => v.toLowerCase().includes(q))) &&
+      (!f.status || applicationStatus(a).label === f.status) &&
+      (f.expiry !== "expired" || a.expiredCount > 0) &&
+      (f.expiry !== "soon" || a.expiringSoonCount > 0) &&
+      (!f.appliedFrom || a.application_date >= f.appliedFrom) &&
+      (!f.appliedTo || a.application_date <= f.appliedTo),
+  );
+}
+
+/** Pill colour for a document's displayed status. */
+export function documentStatusTone(status: string): Tone {
+  switch (status) {
+    case "Approved":
+      return "green";
+    case "Received":
+    case "Under Review":
+      return "blue";
+    case "Pending":
+      return "amber";
+    case "Expired":
+      return "red";
+    default:
+      return "grey";
+  }
+}
+
+// ---------- Outstanding items ----------
+
+export type OutstandingView = "missing" | "expiring";
+
+export interface OutstandingGroup {
+  app: ApplicationSummary;
+  priority: "HIGH" | "MEDIUM";
+  items: { document_type: string; label: string; sortKey: string }[];
+}
+
+/**
+ * Groups documents that need chasing by application.
+ * - "missing": Pending (not yet sent) or expired (needs a new copy).
+ * - "expiring": not expired, but expiring within EXPIRING_SOON_DAYS.
+ * HIGH priority means the application is stalled or has an expired document.
+ * Missing groups keep worklist order; expiring groups are ordered by soonest expiry.
+ */
+export function outstandingGroups(
+  apps: ApplicationSummary[],
+  docsByApp: Map<string, Pick<DocumentRow, "document_type" | "status" | "expiration_date">[]>,
+  view: OutstandingView,
+  asOf: string,
+): OutstandingGroup[] {
+  const groups: OutstandingGroup[] = [];
+  for (const app of apps) {
+    const items: OutstandingGroup["items"] = [];
+    for (const d of docsByApp.get(app.id) ?? []) {
+      const state = docState(d, asOf);
+      if (view === "missing" && (state.expired || d.status === "Pending")) {
+        items.push({ document_type: d.document_type, label: state.expired ? "Expired" : "Missing", sortKey: d.document_type });
+      } else if (view === "expiring" && state.expiringSoon && d.expiration_date) {
+        items.push({
+          document_type: d.document_type,
+          label: `Expires ${formatDate(d.expiration_date)}`,
+          sortKey: d.expiration_date,
+        });
+      }
+    }
+    if (items.length === 0) continue;
+    items.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    groups.push({ app, priority: app.stalled || app.expiredCount > 0 ? "HIGH" : "MEDIUM", items });
+  }
+  const rank = (g: OutstandingGroup) => (g.priority === "HIGH" ? 0 : 1);
+  return groups.sort(
+    (a, b) => rank(a) - rank(b) || (view === "expiring" ? a.items[0].sortKey.localeCompare(b.items[0].sortKey) : 0),
+  );
 }
 
 /** Worklist order: stalled, then has expired, then expiring soon, then most outstanding, then id. */
@@ -271,4 +389,22 @@ export function applyDocumentEdit(
     ok: true,
     fields: { status, date_received: dateReceived, expiration_date: expirationDate, notes },
   };
+}
+
+export type DocumentPatch = { status?: string; date_received?: string | null; notes?: string };
+
+/**
+ * What the editor shows but the server hasn't stored yet, as a PATCH body; empty when everything is saved.
+ * Blank form fields match null stored values, and whitespace-only notes match no notes (they're stored as null).
+ */
+export function unsavedChanges(
+  saved: Pick<DocumentRow, "status" | "date_received" | "notes">,
+  shown: { status: string; date_received: string; notes: string },
+): DocumentPatch {
+  const patch: DocumentPatch = {};
+  if (shown.status !== saved.status) patch.status = shown.status;
+  if (shown.date_received !== (saved.date_received ?? "")) patch.date_received = shown.date_received || null;
+  const notesCleared = shown.notes.trim() === "" && saved.notes === null;
+  if (shown.notes !== (saved.notes ?? "") && !notesCleared) patch.notes = shown.notes;
+  return patch;
 }
