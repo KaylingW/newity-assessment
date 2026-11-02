@@ -1,0 +1,9 @@
+application_id,business_name,borrower_name,loan_amount,application_date,assigned_processor,document_type,document_status,date_received,expiration_date,notes
+APP-2026-1001,Metro Dental Group,Elena Williams,“390000”,12/1/20,Aisha Patel,Bank Statements (90 day),Terstsfhdgk,“1/28/2026”,4/28/2026,Reviewing for completeness
+APP-2026-1001,Metro Dental Group,“Elena Williams”,390000,12/1/2025,Aisha Patel,Ownership Verification,Approved,1/20/2026,,
+APP-2026-1001,Metro Dental Group,Elena Williams,3adfnv,12/1/2025,{},Articles of Incorporation,Received,12/29/2025,,
+APP-2026-1001,Metro Dental Group,Elena Williams,390000,12/1/2025,Aisha Patel,Business Licenses & Permits,Pending,,,
+APP-2026-1001,Metro Dental Group,Elena Williams,390000,12/1/9999,Aisha Patel,Personal Tax Returns,Undefined,{NA},1/28/2029,
+APP-2026-1001,Metro Dental Group,Elena Williams,390000,12/1/2025,Aisha Patel,Lease Agreement,Pending,,,Borrower contacted via email
+APP-2026-1001,Metro Dental Group,Elena Williams,390000,12/1/2025,Aisha Patel,Business Tax Returns (3yr),Approved,12/18/2025,12/17/2028,
+APP-2026-1001,Metro Dental Group,Elena Williams,390000,12/1/2025,Aisha Patel,Business Financial Statements,Pending,,,

@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_CSV_PATH, listApplicationSummaries, seedIfEmpty } from "@/lib/db";
+import {
+  DEFAULT_CSV_PATH,
+  listApplicationSummaries,
+  seedIfEmpty,
+  validateCsvRows,
+  type CsvRow,
+} from "@/lib/db";
 import { docState } from "@/lib/rules";
-import { count, open, tempDbPath, tempDir } from "../helpers";
+import { AS_OF, count, open, tempDbPath, tempDir } from "../helpers";
+
+const MALFORMED_CSV_PATH = path.join(path.dirname(DEFAULT_CSV_PATH), "NEWITY_Sample_Data_Malformed.csv");
 
 describe("seed", () => {
   it("loads 60 applications and 620 documents, and a second run adds nothing", () => {
@@ -56,5 +64,88 @@ describe("seed", () => {
     expect(() => seedIfEmpty(db, csv)).toThrow();
     expect(count(db, "applications")).toBe(0);
     expect(count(db, "documents")).toBe(0);
+  });
+
+  it("rejects the malformed sample file, reporting every problem with its line", () => {
+    const db = open(tempDbPath());
+    let message = "";
+    try {
+      seedIfEmpty(db, MALFORMED_CSV_PATH);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    for (const expected of [
+      'line 2: loan_amount is wrapped in curly quotes (“390000”)',
+      "line 2: application_date: Unrecognized date \"12/1/20\"",
+      'line 2: unknown document_status "Terstsfhdgk"',
+      "line 2: date_received is wrapped in curly quotes",
+      "line 3: borrower_name is wrapped in curly quotes",
+      'line 4: loan_amount "3adfnv" is not a positive whole number',
+      'line 4: assigned_processor "{}" is not a name',
+      "line 6: application_date 9999-12-01 is after today",
+      'line 6: unknown document_type "Personal Tax Returns"',
+      'line 6: unknown document_status "Undefined"',
+      'line 6: date_received: Unrecognized date "{NA}"',
+    ]) {
+      expect(message).toContain(expected);
+    }
+    expect(message).toContain("nothing was loaded");
+    expect(count(db, "applications")).toBe(0);
+    expect(count(db, "documents")).toBe(0);
+  });
+});
+
+describe("validateCsvRows", () => {
+  const good: CsvRow = {
+    application_id: "APP-1",
+    business_name: "Biz",
+    borrower_name: "Bob",
+    loan_amount: "390000",
+    application_date: "12/1/2025",
+    assigned_processor: "Aisha Patel",
+    document_type: "Lease Agreement",
+    document_status: "Pending",
+    date_received: "",
+    expiration_date: "",
+    notes: "",
+  };
+  const check = (...rows: Partial<CsvRow>[]) =>
+    validateCsvRows(rows.map((r, i) => ({ record: { ...good, ...r }, line: i + 2 })), AS_OF).errors;
+
+  it("accepts a valid row and converts it", () => {
+    const { rows, errors } = validateCsvRows(
+      [{ record: { ...good, date_received: "1/2/2026", notes: "hi" }, line: 2 }],
+      AS_OF,
+    );
+    expect(errors).toEqual([]);
+    expect(rows[0].app.loan_amount).toBe(390000);
+    expect(rows[0].app.application_date).toBe("2025-12-01");
+    expect(rows[0].doc.date_received).toBe("2026-01-02");
+    expect(rows[0].doc.notes).toBe("hi");
+  });
+
+  it.each([
+    [{ business_name: "" }, "business_name is blank"],
+    [{ assigned_processor: "" }, "assigned_processor is blank"],
+    [{ document_type: "" }, "document_type is blank"],
+    [{ document_status: "" }, "document_status is blank"],
+    [{ loan_amount: "" }, "loan_amount is blank"],
+    [{ loan_amount: "0" }, 'loan_amount "0" is not a positive whole number'],
+    [{ loan_amount: "-5" }, 'loan_amount "-5" is not a positive whole number'],
+    [{ loan_amount: "390000.55" }, 'loan_amount "390000.55" is not a positive whole number'],
+    [{ date_received: "2/16/2026" }, "date_received 2026-02-16 is after today"],
+    [{ date_received: "1/10/2026", expiration_date: "1/9/2026" }, "expiration_date 2026-01-09 is before date_received"],
+  ] as [Partial<CsvRow>, string][])("rejects %o", (row, expected) => {
+    expect(check(row).join("\n")).toContain(`line 2: ${expected}`);
+  });
+
+  it("rejects rows that disagree about the same application", () => {
+    expect(check({}, { document_type: "Debt Schedule", assigned_processor: "Janet Morrison" })).toEqual([
+      'line 3: assigned_processor "Janet Morrison" differs from "Aisha Patel" on line 2 for APP-1',
+    ]);
+  });
+
+  it("rejects a document listed twice for one application", () => {
+    expect(check({}, {})).toEqual(["line 3: duplicate Lease Agreement for APP-1 (first on line 2)"]);
   });
 });

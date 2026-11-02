@@ -8,6 +8,7 @@ import {
   formatDate,
   parseUsDate,
   applicationStatus,
+  expiringSoonWarning,
   documentStatusTone,
   filterApplications,
   outstandingGroups,
@@ -140,11 +141,25 @@ describe("application rollup", () => {
 
   it("labels an application by its most urgent condition", () => {
     const base = { stalled: false, expiredCount: 0, expiringSoonCount: 0, outstandingCount: 0 };
+    const expiring = { ...base, expiringSoonCount: 1 };
     expect(applicationStatus({ ...base, stalled: true, expiredCount: 1 }).label).toBe("Stalled");
-    expect(applicationStatus({ ...base, expiredCount: 1, expiringSoonCount: 1 }).label).toBe("Expired docs");
-    expect(applicationStatus({ ...base, expiringSoonCount: 1, outstandingCount: 1 }).label).toBe("Expiring soon");
+    expect(applicationStatus({ ...expiring, expiredCount: 1 }).label).toBe("Expired docs");
+    expect(applicationStatus({ ...expiring, outstandingCount: 1 }).label).toBe("Needs docs");
     expect(applicationStatus({ ...base, outstandingCount: 2 }).label).toBe("Needs docs");
     expect(applicationStatus(base)).toEqual({ label: "Complete", tone: "green" });
+  });
+
+  it("keeps a finished application Complete while a document is expiring soon, then drops it once expired", () => {
+    const bank = { status: "Approved", date_received: "2026-02-10", expiration_date: "2026-03-10" };
+    const before = summarizeApplication(app, [doc(bank), doc({ status: "Not Required" })], AS_OF);
+    expect(applicationStatus(before).label).toBe("Complete");
+    expect(expiringSoonWarning(before)).toBe("1 expiring soon");
+    expect(before.completeCount).toBe(2);
+
+    const after = summarizeApplication(app, [doc(bank), doc({ status: "Not Required" })], "2026-03-11");
+    expect(applicationStatus(after).label).not.toBe("Complete");
+    expect(expiringSoonWarning(after)).toBeNull();
+    expect(after.completeCount).toBe(1);
   });
 
   it("filters by search text, status and expiry", () => {
@@ -152,7 +167,8 @@ describe("application rollup", () => {
     const b = summarizeApplication({ ...app, id: "APP-2", business_name: "Unity Clinic" }, [doc({ status: "Expired" })], AS_OF);
     expect(filterApplications([a, b], { q: "metro" }).map((x) => x.id)).toEqual(["APP-1"]);
     expect(filterApplications([a, b], { q: "app-2" }).map((x) => x.id)).toEqual(["APP-2"]);
-    expect(filterApplications([a, b], { status: "Expiring soon" }).map((x) => x.id)).toEqual(["APP-1"]);
+    expect(filterApplications([a, b], { status: "Needs docs" }).map((x) => x.id)).toEqual(["APP-1"]);
+    expect(filterApplications([a, b], { expiry: "soon" }).map((x) => x.id)).toEqual(["APP-1"]);
     expect(filterApplications([a, b], { expiry: "expired" }).map((x) => x.id)).toEqual(["APP-2"]);
     expect(filterApplications([a, b], {})).toHaveLength(2);
   });

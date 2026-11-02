@@ -178,18 +178,25 @@ export function stalledReason(s: Pick<ApplicationSummary, "stalled" | "daysIdle"
 
 export type Tone = "red" | "amber" | "green" | "blue" | "grey";
 
-export const APPLICATION_STATUSES = ["Stalled", "Expired docs", "Expiring soon", "Needs docs", "Complete"] as const;
+export const APPLICATION_STATUSES = ["Stalled", "Expired docs", "Needs docs", "Complete"] as const;
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
-/** The single most urgent label for an application, in the same priority as the worklist order. */
+/**
+ * The single most urgent label for an application. Expiring-soon documents don't change it: they're shown
+ * as a separate warning (expiringSoonWarning), so a finished application still reads as Complete.
+ */
 export function applicationStatus(
-  s: Pick<ApplicationSummary, "stalled" | "expiredCount" | "expiringSoonCount" | "outstandingCount">,
+  s: Pick<ApplicationSummary, "stalled" | "expiredCount" | "outstandingCount">,
 ): { label: ApplicationStatus; tone: Tone } {
   if (s.stalled) return { label: "Stalled", tone: "red" };
   if (s.expiredCount > 0) return { label: "Expired docs", tone: "red" };
-  if (s.expiringSoonCount > 0) return { label: "Expiring soon", tone: "amber" };
   if (s.outstandingCount > 0) return { label: "Needs docs", tone: "amber" };
   return { label: "Complete", tone: "green" };
+}
+
+/** Warning shown beside the status, e.g. "1 expiring soon", or null when nothing is expiring soon. */
+export function expiringSoonWarning(s: Pick<ApplicationSummary, "expiringSoonCount">): string | null {
+  return s.expiringSoonCount > 0 ? `${s.expiringSoonCount} expiring soon` : null;
 }
 
 export interface ApplicationFilters {
