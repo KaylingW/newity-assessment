@@ -6,7 +6,7 @@ import { MetricCard, PageTitle, Pill } from "@/components/ui";
 import { EXPIRING_SOON_DAYS, STALL_DAYS } from "@/lib/config";
 import { getDb, listApplicationSummaries, listProcessors } from "@/lib/db";
 import { listQueryString, readListQuery, type RawParams } from "@/lib/listQuery";
-import { applicationStatus, filterApplications, formatDate, stalledReason } from "@/lib/rules";
+import { applicationStatus, expiringSoonWarning, filterApplications, formatDate, stalledReason } from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +42,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
         <table className="w-full min-w-[900px] border-separate border-spacing-0 text-left text-xs">
           <thead>
             <tr className="text-[11px] font-semibold uppercase text-muted">
-              {["Application", "Borrower", "Documents", "Outstanding", "Next expiry", "Status"].map((h, i, all) => (
+              {["Application", "Borrower", "Applied", "Documents", "Outstanding", "Next expiry", "Status"].map((h, i, all) => (
                 <th
                   key={h}
                   scope="col"
@@ -58,6 +58,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           <tbody>
             {apps.map((a, i) => {
               const status = applicationStatus(a);
+              const warning = expiringSoonWarning(a);
               const href = `/applications/${encodeURIComponent(a.id)}${backQuery}`;
               return (
                 <ClickableRow
@@ -78,6 +79,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                       {a.borrower_name} · {a.assigned_processor}
                     </div>
                   </td>
+                  <td className="border-b border-line px-[18px]">{formatDate(a.application_date)}</td>
                   <td className="border-b border-line px-[18px] tabular-nums">
                     {a.completeCount} / {a.totalDocs}
                   </td>
@@ -86,16 +88,19 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                   </td>
                   <td className="border-b border-line px-[18px]">{formatDate(a.nextExpiry) || "—"}</td>
                   <td className="border-b border-line px-[18px]">
-                    <Pill tone={status.tone} title={stalledReason(a) ?? undefined}>
-                      {status.label}
-                    </Pill>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Pill tone={status.tone} title={stalledReason(a) ?? undefined}>
+                        {status.label}
+                      </Pill>
+                      {warning && <Pill tone="amber">{warning}</Pill>}
+                    </div>
                   </td>
                 </ClickableRow>
               );
             })}
             {apps.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-[18px] py-10 text-center text-[13px] text-muted">
+                <td colSpan={7} className="px-[18px] py-10 text-center text-[13px] text-muted">
                   No applications match these filters.
                 </td>
               </tr>
@@ -107,7 +112,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       <p className="text-xs text-muted">
         <strong className="font-semibold text-text">Stalled</strong> means documents are still needed and nothing has
         come in for {STALL_DAYS} days or more. <strong className="font-semibold text-text">Expiring soon</strong> means
-        a document expires within {EXPIRING_SOON_DAYS} days. <strong className="font-semibold text-text">Documents</strong>{" "}
+        a document expires within {EXPIRING_SOON_DAYS} days; it shows beside the status, so a complete application
+        still reads as Complete. <strong className="font-semibold text-text">Documents</strong>{" "}
         counts those approved or not required, out of the total.
       </p>
     </div>

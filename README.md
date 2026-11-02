@@ -35,7 +35,7 @@ For a production build: `npm run build && npm start`.
 
 ## Change the "today" date
 
-All expiry and stalled checks use one as-of date, shown in the page header. It defaults to **2026-02-15** because the sample data ends in February 2026. To change it, set `AS_OF_DATE` (format `YYYY-MM-DD`) when starting the app:
+All expiry and stalled checks use one as-of date, shown in the page header. It is **frozen at 2026-02-15** on purpose, not read from the system clock, because the sample data ends in February 2026. Against the real date, 34 of the 49 bank statements in the sample would already be expired, and since the last document arrived on 2026-02-12, every application still waiting on a document would be stalled. If a document due on, say, March 10, 2026 shows as "expiring soon" rather than "expired", that is why; it is not a bug. To change it, set `AS_OF_DATE` (format `YYYY-MM-DD`) when starting the app:
 
 ```bash
 AS_OF_DATE=2026-03-01 npm run dev
@@ -53,12 +53,17 @@ rm -rf .data && npm run dev
 
 - **Done:** Approved or Not Required. Everything else is still needed.
 - **Expired:** stored status is Expired, or the expiration date is before the as-of date.
-- **Expiring soon:** expires within 30 days of the as-of date.
+- **Expiring soon:** expires within 30 days of the as-of date. This is a warning shown beside the application's status, not a status of its own, so an application whose documents are all done still reads **Complete**, with e.g. "1 expiring soon" next to it. Once the date passes, the document counts as expired, the checklist drops (e.g. 9 of 9 to 8 of 9) and the status becomes **Expired docs** (or **Stalled**).
 - **Stalled:** at least one document still needed, and no document received for 14 days or more (counting from the application date if nothing has been received).
 - Marking a document Received, Under Review or Approved fills in the as-of date if it has no received date.
 - Entering a received date on a tax return (3 years), bank statement (90 days) or insurance verification (365 days) recalculates its expiration date. Entering one on a document stored as Expired marks it Received.
 
 The thresholds and expiry rules live in `src/lib/config.ts`; the rule logic is in `src/lib/rules.ts`.
+
+## Known limitations
+
+- **Expiry warnings never clear.** In real life a document only has to stay valid until the loan closes, so the warning should stop once it closes. Loan closing is out of scope for this version, so a complete application keeps its expiring-soon warning, and later drops out of Complete, until a fresh document is received.
+- **Notes can contradict the status.** Notes are free text and don't change when the status does. A document reviewed with the note "Reviewing for completeness" keeps that note after it is marked Approved. Nothing checks that the two agree; one option would be to prompt for a note when the status changes.
 
 ## Tests
 

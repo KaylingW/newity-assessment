@@ -5,7 +5,14 @@ import { Pill } from "@/components/ui";
 import { AS_OF_DATE, DOCUMENT_STATUSES } from "@/lib/config";
 import { getApplication, getDb, listDocuments } from "@/lib/db";
 import { listQueryString, type RawParams } from "@/lib/listQuery";
-import { applicationStatus, docState, formatDate, stalledReason, summarizeApplication } from "@/lib/rules";
+import {
+  applicationStatus,
+  docState,
+  expiringSoonWarning,
+  formatDate,
+  stalledReason,
+  summarizeApplication,
+} from "@/lib/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +32,7 @@ export default async function ApplicationPage({
   const summary = summarizeApplication(app, docs, AS_OF_DATE);
   const status = applicationStatus(summary);
   const reason = stalledReason(summary);
+  const warning = expiringSoonWarning(summary);
   const backHref = `/${listQueryString(await searchParams)}`;
   const pct = summary.totalDocs ? Math.round((summary.completeCount / summary.totalDocs) * 100) : 0;
 
@@ -46,7 +54,10 @@ export default async function ApplicationPage({
             </p>
           </div>
           <div className="flex flex-col items-end gap-1.5 pt-2.5">
-            <Pill tone={status.tone}>{status.label}</Pill>
+            <div className="flex flex-wrap justify-end gap-1.5">
+              <Pill tone={status.tone}>{status.label}</Pill>
+              {warning && <Pill tone="amber">{warning}</Pill>}
+            </div>
             {reason && <span className="text-[11px] text-red-fg">{reason}</span>}
           </div>
         </div>
